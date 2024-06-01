@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        table, tr, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 5px 10px;
+        }
+
+        input[type="number"] {
+            width: 50px;
+        }
+    </style>
+    <script>
+
+        let generatedArray = [];
+        let tableData = {};
+
+        const handleGenerateRandomSequence = () => {
+            const threshold = parseInt(document.querySelector('input[name="threshold"]').value);
+
+            let value = threshold;
+            generatedArray = []
+
+            while (value > 1) {
+                generatedArray.push(parseInt(value) - randomInRange(1, value / 2));
+                value = parseInt(value / 2);
+            }
+
+            document.querySelector('#generated-array').innerHTML = "Random requests sequence: " + generatedArray.join(' ');
+        }
+
+        const renderTable = (tableId, tableData) => {
+            const table = document.querySelector(`#${tableId} tbody`);
+            table.innerHTML = '';
+
+            data = tableData.sort((a, b) => a.repetition - b.repetition);
+
+            data.forEach((row) => {
+                const { repetition, numOfRequests, failedRequests, time } = row;
+                const newRow = table.insertRow();
+                newRow.insertCell();
+                const cell1 = newRow.insertCell();
+                const cell2 = newRow.insertCell();
+                const cell3 = newRow.insertCell();
+
+                cell1.appendChild(document.createTextNode(`${repetition}.`))
+                const failed = failedRequests === -1 ? '' : `(${failedRequests} failed)`;
+                cell2.appendChild(document.createTextNode(`${numOfRequests} ${failed}`))
+                cell3.appendChild(document.createTextNode(time))
+            })
+
+        }
+
+        const makeRequest = async (data) => {
+            return fetch('/start', {
+                method: 'post',
+                body: data
+            }).then(async (res) => {
+                const data = await res.json();
+                if (!res.ok) {
+                    throw data;
+                }
+
+                return data;
+            });
+        }
+
+        const randomInRange = (min, max) => {
+            min = Math.ceil(min); // Round up the minimum value
+            max = Math.floor(max); // Round down the maximum value
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        };
+
+        const handleClick = async (apiHost) => {
+
+            const table = apiHost === 'vm' ? "first-results" : "second-results";
+            tableData[table] = [];
+            renderTable(table, tableData[table]);
+
+            const data = new FormData();
+            const file = document.querySelector('input[name="file"]').files[0];
+            data.set("file", file)
+
+            if (apiHost === 'cf') {
+                data.set("toCloudRun", true);
+            }
+
+            const repetition = generatedArray.length;
+            const interval = parseFloat(document.querySelector('input[name="interval"]').value);
+
+            const start = new Date();
+            let rep = 0;
+
+            (function foo() {
+                if (rep >= repetition){
+                    return;
+                }
+
+                data.set("numOfRequests", generatedArray[rep]);
+
+                const count = rep;
+
+                makeRequest(data)
+                    .then((res) => {
+                        tableData[table].push({
+                            repetition: count + 1,
+                            numOfRequests: res.numOfRequests,
+                            failedRequests: res.failedRequests,
+                            time: res.time
+                        })
+                    })
+                    .catch((err) => {
+                        tableData[table].push({
+                            repetition: count + 1,
+                            numOfRequests: -1,
+                            failedRequests: -1,
+                            time: -1
+                        })
+                        console.log("Error: ", err)}
+                    )
+                    .finally(() => {
+                        renderTable(table, tableData[table]);
+                    })
+
+                rep++;
+                setTimeout(foo, interval * 1000);
+            })();
+        }
+    </script>
+</head>
+
+<body>
+        <label>
+            File:
+            <br />
+            <input type="file" name="file" />
+        </label>
+        <br />
+        <br />
+
+            With a <input type="number" name="interval" /> pause inbetween, send decreasing number of requests with a threshold of <input type="number" name="threshold"/>
+
+        <br />
+        <br />
+
+        <p id="generated-array">
+        </p>
+
+        <button onclick="handleGenerateRandomSequence()">Generate Random Sequence</button>
+
+        <br/>
+        <br/>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); column-gap: 50px;">
+            <div>
+                <button type="button" onclick="handleClick('vm')">Start</button>
+                <table id="first-results">
+                    <thead>
+                        <tr>
+                            <th>Results</th>
+                            <th>Repetition</th>
+                            <th>Number of requests</th>
+                            <th>Time in milliseconds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+
+            <div>
+                <button type="button" onclick="handleClick('cf')">Start</button>
+                <table id="second-results">
+                    <thead>
+                        <tr>
+                            <th>Results</th>
+                            <th>Repetition</th>
+                            <th>Number of requests</th>
+                            <th>Time in milliseconds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+</body>
+
+</html>
